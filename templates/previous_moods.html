@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previous Moods and Recommendations</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='previous.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js -->
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <h2 class="logo">Inspired to Learn</h2>
+        </div>
+        <nav>
+          <!-- Back to Home Button -->
+        <a href="{{ url_for('index') }}" class="back-button">⬅ Back to Home</a>  </nav>
+        
+    </header>
+
+    <h1><br><br>Previous Moods and Ratings</h1>
+
+    <!-- Mood Percentages Section (Now Below Book List) -->
+    <div class="mood-percentages">
+        <h2>Mood Percentages:</h2>
+        
+        <!-- Pie Chart -->
+        <canvas id="moodChart"></canvas>
+
+        {% if mood_percentages %}
+            <p>{{ username }} is mostly {{ dominant_mood }}.</p>
+        {% endif %}
+    </div>
+
+    <!-- Book List Section -->
+    <div class="book-list">
+        <h2>All Recommended Books:</h2>
+        <ul>
+            {% for book in all_books %}
+                <li class="book-item">{{ book.title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    
+
+    <!-- JavaScript for Pie Chart -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var ctx = document.getElementById('moodChart').getContext('2d');
+
+            // Filtered Mood Data (Only Happy, Sad, and Angry)
+            var moodData = {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [], // Define colors dynamically
+                    borderWidth: 1
+                }]
+            };
+
+            var moodPercentages = {{ mood_percentages | tojson }};  // Get Python dictionary as JSON
+
+            // Only include Happy, Sad, and Angry moods with specific colors
+            var selectedMoods = ['happy', 'sad', 'angry'];
+            var colorMap = {'happy': '#FFD700', 'sad': '#3498DB', 'angry': '#FF0000'}; // Yellow, Blue, Red
+
+            for (var mood in moodPercentages) {
+                if (selectedMoods.includes(mood)) {
+                    moodData.labels.push(mood.charAt(0).toUpperCase() + mood.slice(1)); // Capitalize first letter
+                    moodData.datasets[0].data.push(moodPercentages[mood]);
+                    moodData.datasets[0].backgroundColor.push(colorMap[mood]);
+                }
+            }
+
+            new Chart(ctx, {
+                type: 'pie',
+                data: moodData,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>

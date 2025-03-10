@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion and Book Recommendation</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='index.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Inspired to Learn</div>
+            <ul>
+                <li><a href="#" class="active">Home</a></li>
+                <li><a href="{{ url_for('about') }}">About</a></li>
+                <li><a href="{{ url_for('contact') }}">Contact</a></li>
+                {% if username %}
+                <li><a href="{{ url_for('previous_moods') }}"> Previous Moods</a> </li>
+                {% endif %}
+                {% if username %}
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+
+    {% if username %}
+        <h1>Hello {{ username }}</h1>
+    {% else %}
+        <a href="{{ url_for('login') }}">Login</a> | <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <h1>Emotion Detection & Book Recommendations</h1>
+    <button id="capture-button" onclick="startEmotionCapture()">Capture Emotion</button>
+
+    <div id="emotion-output">Your emotion will appear here...</div>
+
+    <div id="books-output">
+        <h3>Recommended Books:</h3>
+        <div class="book-list" id="book-list"></div>
+    </div>
+
+    <div id="capturedImageContainer">
+        <h3>Captured Frame:</h3>
+        <img id="capturedImage" src="" alt="Captured Emotion" style="display:none;">
+    </div>
+
+    <button id="re-recommend-button" style="display:none;" onclick="reRecommendBooks()">Re-Recommend Books</button>
+
+    <script>
+        function startEmotionCapture() {
+            fetch('/capture_emotion', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Received emotion data:', data); // Debugging: Log the response
+                    document.getElementById('emotion-output').innerText = "Your emotion is: " + data.emotion;
+
+                    const bookList = document.getElementById('book-list');
+                    bookList.innerHTML = '';
+
+                    // Show Captured Frame
+                    const capturedImageContainer = document.getElementById("capturedImageContainer");
+                    const capturedImage = document.getElementById("capturedImage");
+
+                    if (data.captured_image) {
+                        capturedImage.src = "data:image/jpeg;base64," + data.captured_image;
+                        capturedImage.style.display = "block";
+                        capturedImageContainer.style.display = "block";
+                    }
+
+                    if (data.recommended_books && data.recommended_books.length > 0) {
+                        // Display recommended books
+                        data.recommended_books.forEach((book, index) => {
+                            const bookItem = document.createElement('div');
+                            bookItem.className = 'book-item';
+                            bookItem.innerHTML = `
+                                <img src="${book.image_url}" alt="${book.title}">
+                                <div class="book-title">${book.title}</div>
+                                <p>Genre: ${book.genre}</p>
+                                <div class="rating">
+                                    <button id="rating-${index}-1" onclick="rateBook(${index}, 1)">1</button>
+                                    <button id="rating-${index}-2" onclick="rateBook(${index}, 2)">2</button>
+                                    <button id="rating-${index}-3" onclick="rateBook(${index}, 3)">3</button>
+                                    <button id="rating-${index}-4" onclick="rateBook(${index}, 4)">4</button>
+                                    <button id="rating-${index}-5" onclick="rateBook(${index}, 5)">5</button>
+                                    <button id="submit-rating-${index}" onclick="submitRating(${index}, '${book.title}')">Submit</button>
+                                    <div id="rating-message-${index}" class="rating-message"></div>
+                                </div>
+                            `;
+                            bookList.appendChild(bookItem);
+                        });
+
+                        // Show "Re-Recommend Books" button
+                        document.getElementById('re-recommend-button').style.display = 'inline-block';
+                    } else {
+                        bookList.innerHTML = '<p>No book recommendations available for this emotion.</p>';
+                        document.getElementById('re-recommend-button').style.display = 'none';
+                    }
+                })
+                .catch(error => console.error("Error fetching emotion:", error));
+        }
+
+        function rateBook(index, rating) {
+            const buttons = document.querySelectorAll(`#rating-${index}-1, #rating-${index}-2, #rating-${index}-3, #rating-${index}-4, #rating-${index}-5`);
+            buttons.forEach(button => button.classList.remove('selected'));
+            document.getElementById(`rating-${index}-${rating}`).classList.add('selected');
+        }
+
+        function submitRating(index, title) {
+            let selectedRating = null;
+            for (let i = 1; i <= 5; i++) {
+                if (document.getElementById(`rating-${index}-${i}`).classList.contains('selected')) {
+                    selectedRating = i;
+                    break;
+                }
+            }
+
+            if (selectedRating) {
+                fetch('/submit_rating', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: title, rating: selectedRating })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Clear any previous "Thank you" message
+                        const ratingMessage = document.getElementById(`rating-message-${index}`);
+                        ratingMessage.innerHTML = '';
+
+                        // Display the new "Thank you" message with the updated rating
+                        const message = document.createElement('p');
+                        message.innerText = `Thank you for your rating of ${selectedRating}!`;
+                        message.style.color = "white";
+                        ratingMessage.appendChild(message);
+                    })
+                    .catch(error => console.error("Error submitting rating:", error));
+            }
+        }
+
+        function reRecommendBooks() {
+            fetch('/re_recommend', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    const bookList = document.getElementById('book-list');
+                    bookList.innerHTML = ''; // Clear previous books
+                    if (data.recommended_books && data.recommended_books.length > 0) {
+                        data.recommended_books.forEach((book, index) => {
+                            const bookItem = document.createElement('div');
+                            bookItem.className = 'book-item';
+                            bookItem.innerHTML = `
+                                <img src="${book.image_url}" alt="${book.title}">
+                                <strong>${book.title}</strong>
+                                <p>Genre: ${book.genre}</p>
+                                <div class="rating">
+                                    <button id="rating-${index}-1" onclick="rateBook(${index}, 1)">1</button>
+                                    <button id="rating-${index}-2" onclick="rateBook(${index}, 2)">2</button>
+                                    <button id="rating-${index}-3" onclick="rateBook(${index}, 3)">3</button>
+                                    <button id="rating-${index}-4" onclick="rateBook(${index}, 4)">4</button>
+                                    <button id="rating-${index}-5" onclick="rateBook(${index}, 5)">5</button>
+                                    <button id="submit-rating-${index}" onclick="submitRating(${index}, '${book.title}')">Submit</button>
+                                    <div id="rating-message-${index}" class="rating-message"></div>
+                                </div>
+                            `;
+                            bookList.appendChild(bookItem);
+                        });
+                    } else {
+                        bookList.innerHTML = '<p>No new recommendations available for this emotion.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching re-recommendation:", error);
+                });
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const ratingButtons = document.querySelectorAll(".rating button");
+
+            ratingButtons.forEach((button) => {
+                button.addEventListener("click", function () {
+                    // Remove 'selected' class from all buttons in the same rating group
+                    let parent = this.parentElement;
+                    parent.querySelectorAll("button").forEach((btn) => btn.classList.remove("selected"));
+
+                    // Add 'selected' class to the clicked button
+                    this.classList.add("selected");
+                });
+            });
+        });
+    </script>
+</body>
+</html>

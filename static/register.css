@@ -1,0 +1,111 @@
+/* General body styling */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-image: url('mood.png'); 
+    background-size: cover;
+    background-position: center;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Navbar styling */
+.navbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px 20px;
+    box-sizing: border-box;
+}
+
+/* Logo styling */
+.logo {
+    color: white;
+    font-size: 30px;
+    font-weight: bold;
+    margin: 0;
+}
+
+/* Container for the registration form */
+.register-container {
+    background: rgba(0, 0, 0, 0.8);
+    padding: 30px;
+    padding-left: 45px;
+    padding-right: 45px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    width: 280px;
+    text-align: center;
+}
+
+/* White title bar */
+.header-box {
+    background: white;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 20px;
+}
+
+.header-box h1 {
+    margin: 0;
+    font-size: 22px;
+    color: red;
+}
+
+/* Input fields */
+label {
+    display: block;
+    text-align: left;
+    color: white;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-bottom: 2px solid red;
+    background: transparent;
+    color: white;
+    font-size: 16px;
+    outline: none;
+}
+
+/* Red register button */
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: red;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 15px;
+}
+
+button:hover {
+    background-color: darkred;
+}
+
+/* Already have an account text */
+.login-text {
+    margin-top: 15px;
+    font-size: 14px;
+    color: white;
+}
+
+.login-text a {
+    color: red;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.login-text a:hover {
+    text-decoration: underline;
+}

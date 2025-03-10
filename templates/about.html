@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - Mood-Based Book Recommendation</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='about.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Inspired to Learn</div>
+            <a href="{{ url_for('index') }}" class="back-button">⬅ Back to Home</a>  </nav>
+        </nav>
+    </header>
+    
+    <div class="about-container">
+        <h1>About Us</h1>
+        <p>Welcome to <strong>Mood-Based Book Recommendation System</strong>, an AI-powered platform designed to enhance your reading experience by recommending books that align with your emotions.</p>
+        <p>In today's fast-paced world, finding the right book that suits your mood can be challenging. Whether you're feeling happy, sad, or in need of motivation, our system leverages <strong>emotion detection technology</strong> and <strong>machine learning</strong> to suggest books that resonate with your current emotional state.</p>
+        
+        <h2>Who We Are</h2>
+        <p>We are a team of <strong>Computer Engineering Students</strong> from <strong>Lalitpur Engineering College, Nepal</strong>, passionate about <strong>Artificial Intelligence, Machine Learning, and Human-Computer Interaction</strong>. Our project is developed as part of our <strong>Bachelor of Engineering</strong> curriculum, aiming to make book discovery more <strong>personalized and intuitive</strong>.</p>
+        
+        <h2>What We Do</h2>
+        <ul>
+            <li><strong>AI-Powered Emotion Detection:</strong> Our system captures and analyzes facial expressions using <strong>MediaPipe</strong> and a <strong>Neural Network Model (MLP)</strong> to determine your mood.</li>
+            <li><strong>Smart Book Recommendations:</strong> Based on your detected mood, we suggest books from a well-curated database stored in <strong>MongoDB</strong>.</li>
+            <li><strong>User Engagement:</strong> You can rate recommendations, request new suggestions, and track your previous moods for a seamless reading journey.</li>
+        </ul>
+        
+        <h2>Our Vision</h2>
+        <p>We believe that books have the power to <strong>inspire, heal, and transform lives</strong>. Our goal is to use <strong>cutting-edge technology</strong> to create a platform that understands <strong>human emotions</strong> and helps people find the perfect book at the right moment.</p>
+        
+        <p class="quote">📚 <strong>Read what you feel. Feel what you read.</strong></p>
+    </div>
+</body>
+</html>

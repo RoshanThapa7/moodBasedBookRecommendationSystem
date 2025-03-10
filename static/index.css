@@ -1,0 +1,160 @@
+/* General Styles */
+body {
+    margin: 0;
+    font-family: 'Arial', sans-serif;
+    background: url('homeee.png') no-repeat center center fixed;
+    background-size: cover;
+    color: white;
+    text-align: center;
+}
+
+/* Navigation Bar */
+header {
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px 0;
+}
+
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 90%;
+    margin: auto;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+    letter-spacing: 2px;
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+}
+
+nav ul li {
+    margin: 0 15px;
+}
+
+nav ul li a {
+    text-decoration: none;
+    color: white;
+    font-size: 18px;
+    padding: 8px 15px;
+    transition: 0.3s;
+}
+
+nav ul li a.active, nav ul li a:hover {
+    background: red;
+    border-radius: 5px;
+}
+/* Main Content */
+h1 {
+    margin-top: 100px;
+    font-size: 3rem;
+    font-weight: bold;
+}
+
+button {
+    background: red;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    margin: 10px;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background 0.3s ease;
+}
+
+button:hover {
+    transform: scale(1.2);
+    background: darkred;
+}
+
+#emotion-output,
+#books-output {
+    margin: 20px auto;
+    max-width: 600px;
+    padding: 20px;
+    background: none; 
+    border-radius: 10px;
+}
+
+.book-list {
+    display: flex;
+    justify-content: center; /* Center align the book items */
+    gap: 20px; /* Add space between books */
+    flex-wrap: nowrap; /* Prevent wrapping to a new row */
+}
+
+.book-item {
+    width: 200px; /* Set fixed width */
+    flex: 0 0 auto; /* Prevent shrinking */
+}
+
+
+.book-item {
+    display: flex;
+    flex-direction: column; 
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    width: 200px; 
+}
+
+.book-title {
+    font-weight: bold;
+    font-size: 18px;
+    margin-bottom: 5px; 
+}
+
+.rating button {
+    background: #333;
+    margin: 2px;
+    padding: 5px 10px;
+    color: white;
+    border-radius: 3px;
+}
+
+.rating button.selected {
+    background: red !important; 
+    color: white;
+}
+
+
+#capturedImageContainer {
+    text-align: center;
+    margin: 20px auto;
+    padding: 5px;
+    border: 1px solid #ddd;
+    background: transparent;
+    border-radius: 8px;
+    display: none; /* Initially hidden */
+    width: fit-content;
+}
+
+#capturedImage {
+    width: 280px; /* Adjust as needed */
+    height: auto;
+    margin-top: 12px;
+    border-radius: 10px;
+}
+
+
+
+
+/* new */
+.rating-message {
+    margin-top: 10px;
+    color: green;
+    font-weight: bold;
+}

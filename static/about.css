@@ -1,0 +1,153 @@
+/* Navigation Bar */
+header {
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px 0;
+}
+
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 90%;
+    margin: auto;
+} body {
+    background-image: url('homeee.png'); 
+    background-size: cover; 
+    background-attachment: fixed; 
+    background-repeat: no-repeat;
+    background-position: center center; 
+    } 
+
+.about-container {
+    width: 85%;
+    max-width: 1000px;
+    margin: 100px auto;
+    padding: auto;
+    background: transparent;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); 
+    font-family: 'Arial', sans-serif; 
+    line-height: 1.7;
+    color: white;
+    border: none;
+}
+.logo {
+    font-size: 35px;
+    font-weight: bold;
+    color: white;
+    letter-spacing: 1px;
+    font-family: 'Arial', sans-serif;
+}
+
+
+/* Heading styles */
+.about-container h1 {
+    font-size: 2.5em;
+    color: white;
+    margin-bottom: 20px;
+    text-align: bold;
+    font-weight: 700;
+}
+
+.about-container h2 {
+    font-size: 1.8em;
+    color: white;
+    margin-top: 40px;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #eee;
+    font-weight: 600;
+}
+
+/* Paragraph styles */
+.about-container p {
+    margin-bottom: 20px;
+    font-size: 1.1em;
+    color: white;
+}
+
+/* List styles */
+.about-container ul {
+    list-style-type: disc;
+    margin-left: 30px;
+    margin-bottom: 25px;
+}
+
+.about-container li {
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+/* Bold text emphasis */
+.about-container strong {
+    font-weight: 600;
+    color:white; 
+}
+
+/* Quote style */
+.about-container .quote {
+    font-style: italic;
+    text-align: center;
+    font-size: 1.8em;
+    color: white;
+    margin-top: 40px;
+    padding: 20px;
+    background-color: rgb(104, 9, 9);
+    border-radius: 8px;
+}
+
+.team-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 40px;
+}
+
+.team-member {
+    width: 200px;
+    margin: 20px;
+    text-align: center;
+}
+
+.team-member img {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover; /* Ensure images fit within the circle */
+    margin-bottom: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.team-member h3 {
+    font-size: 1.2em;
+    color: white;
+    margin-bottom: 5px;
+}
+
+.team-member p {
+    font-size: 0.9em;
+    color: white;
+}
+.back-button {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    background-color: red;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-family: 'Arial', sans-serif; 
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+}
+
+.back-button:hover {
+    background-color: darkred;
+}
