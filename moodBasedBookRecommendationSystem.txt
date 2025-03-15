@@ -1,0 +1,1531 @@
+#data_collection.py
+
+import mediapipe as mp
+import numpy as np
+import cv2
+import os
+
+name = input("Enter the name of the data: ")
+
+holistic = mp.solutions.holistic
+hands = mp.solutions.hands
+holis = holistic.Holistic()
+drawing = mp.solutions.drawing_utils
+
+X = []
+data_size = 0
+
+# Check if the file already exists BEFORE initializing the webcam
+if os.path.exists(f"{name}.npy"):
+    try:
+        X = list(np.load(f"{name}.npy"))
+        data_size = len(X)
+        print(f"Loaded {data_size} existing samples from {name}.npy")
+    except Exception as e:
+        print(f"Error loading existing data: {e}")
+        X = [] # Ensure X is initialized even if loading fails
+        data_size = 0
+
+# Initialize webcam AFTER loading existing data
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("Error: Could not open webcam")
+    exit() # Exit if webcam cannot be opened
+
+new_samples = 0
+try:
+    while True:
+        lst = []
+        _, frm = cap.read()
+
+        if not _:
+            print("Error: Could not read frame from webcam")
+            break
+
+        frm = cv2.flip(frm, 1)
+        res = holis.process(cv2.cvtColor(frm, cv2.COLOR_BGR2RGB))
+
+        if res.face_landmarks:
+            for i in res.face_landmarks.landmark:
+                lst.append(i.x - res.face_landmarks.landmark[1].x)
+                lst.append(i.y - res.face_landmarks.landmark[1].y)
+
+            if res.left_hand_landmarks:
+                for i in res.left_hand_landmarks.landmark:
+                    lst.append(i.x - res.left_hand_landmarks.landmark[8].x)
+                    lst.append(i.y - res.left_hand_landmarks.landmark[8].y)
+            else:
+                for i in range(42):
+                    lst.append(0.0)
+
+            if res.right_hand_landmarks:
+                for i in res.right_hand_landmarks.landmark:
+                    lst.append(i.x - res.right_hand_landmarks.landmark[8].x)
+                    lst.append(i.y - res.right_hand_landmarks.landmark[8].y)
+            else:
+                for i in range(42):
+                    lst.append(0.0)
+
+            X.append(lst)
+            data_size = data_size + 1
+            new_samples += 1
+
+        drawing.draw_landmarks(frm, res.face_landmarks, holistic.FACEMESH_CONTOURS)
+        drawing.draw_landmarks(frm, res.left_hand_landmarks, hands.HAND_CONNECTIONS)
+        drawing.draw_landmarks(frm, res.right_hand_landmarks, hands.HAND_CONNECTIONS)
+
+        cv2.putText(frm, str(data_size), (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.imshow("window", frm)
+
+        if cv2.waitKey(1) == 27 or new_samples >= 100:
+            break
+
+except Exception as e:
+    print(f"An error occurred during data collection: {e}")
+
+finally:
+    # Ensure proper release of resources even if an error occurs
+    cv2.destroyAllWindows()
+    cap.release()
+
+    # Option to delete last 100 samples
+    delete_option = input("Delete last 100 samples? (y/n): ")
+    if delete_option.lower() == 'y':
+        if len(X) >= 100:
+            X = X[:-100]
+            data_size = len(X)
+            print("Last 100 samples deleted.")
+        else:
+            print("Not enough samples to delete (less than 100).")
+
+    # Save the updated data by appending to the existing file (or creating a new one if it's the first run)
+    try:
+        np.save(f"{name}.npy", np.array(X))
+        print(f"Saved {len(X)} samples to {name}.npy")
+        print(np.array(X).shape)
+    except Exception as e:
+        print(f"Error saving data to file: {e}")
+
+
+
+
+
+
+
+
+
+#data_training.py
+
+import os
+import numpy as np
+from tensorflow.keras.utils import to_categorical
+from keras.layers import Input, Dense
+from keras.models import Model
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report  # Import classification report
+import matplotlib.pyplot as plt  # Importing matplotlib for plotting
+
+# Initialize flags and variables
+label = []
+dictionary = {}
+X = []
+y = []
+
+# Load the data from .npy files
+for i in os.listdir():
+    if i.split(".")[-1] == "npy" and not(i.split(".")[0] == "labels"):
+        try:
+            temp_data = np.load(i)
+            temp_label = i.split('.')[0]
+
+            # Append data and label
+            X.append(temp_data)
+            y.append([temp_label] * len(temp_data))  # Repeat label for each sample
+
+            # Add label to dictionary
+            if temp_label not in dictionary:
+                dictionary[temp_label] = len(label)
+                label.append(temp_label)
+        except Exception as e:
+            print(f"Error loading {i}: {e}")
+
+# Concatenate data
+X = np.concatenate(X, axis=0)
+y = np.concatenate(y, axis=0).reshape(-1, 1)
+
+# Convert labels to integers using dictionary
+for i in range(y.shape[0]):
+    y[i, 0] = dictionary[y[i, 0]]
+y = np.array(y, dtype="int32")
+
+# Convert labels to categorical (one-hot encoding)
+y = to_categorical(y, num_classes=len(label))
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Define the input shape for the model
+ip = Input(shape=(X.shape[1],))
+
+# Build the model
+m = Dense(512, activation="relu")(ip)
+m = Dense(256, activation="relu")(m)
+op = Dense(len(label), activation="softmax")(m) # Ensure the final layer has correct number of outputs
+
+# Create the model
+model = Model(inputs=ip, outputs=op)
+
+# Compile the model
+model.compile(optimizer='adam', loss="categorical_crossentropy", metrics=['accuracy'])
+
+# Train the model and store the training history
+history = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100)
+
+# Evaluate the model
+loss, accuracy = model.evaluate(X_test, y_test)
+print(f"Test Loss: {loss:.4f}")
+print(f"Test Accuracy: {accuracy:.4f}")
+
+# Get predictions on the test data
+y_pred = model.predict(X_test)
+
+# Convert predictions back to class labels
+y_pred = np.argmax(y_pred, axis=1)
+y_true = np.argmax(y_test, axis=1)
+
+# Generate classification report
+report = classification_report(y_true, y_pred, target_names=['Happy', 'Sad', 'Angry'])
+print(report)
+
+# Plotting the accuracy and loss curves
+# Accuracy curve
+plt.figure(figsize=(12, 4))
+
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Accuracy Curve')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+# Loss curve
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Loss Curve')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+# Save the model and labels
+model.save("model.h5")
+np.save("labels.npy", np.array(label))
+
+
+
+
+
+
+
+#app.py
+
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+import bcrypt
+from pymongo import MongoClient
+from keras.models import load_model
+import numpy as np
+import cv2
+import mediapipe as mp
+import random  # Importing the random module
+from bson import ObjectId
+import base64
+
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'
+
+# MongoDB connection
+client = MongoClient("mongodb://localhost:27017/")
+
+# Database for book recommendations
+db = client["book_recommendation"]
+users_collection = db["users"]
+user_moods_collection = db["user_moods"]
+user_ratings_collection = db["user_ratings"]
+previous_recommendations_collection = db["previous_recommendations"]
+
+# Database for contact messages
+contact_db = client['contact_db']
+
+# Load the pre-trained emotion detection model and labels
+model = load_model("model.h5")
+label = np.load("labels.npy")
+
+# Initialize mediapipe for face and hand landmark detection
+holistic = mp.solutions.holistic
+hands = mp.solutions.hands
+holis = holistic.Holistic()
+drawing = mp.solutions.drawing_utils
+
+# Global variable to store detected emotion
+emotion = "Neutral"
+
+# Global variable to store previously recommended books in the current session
+previously_recommended_books = []
+
+def capture_emotion_once():
+    global emotion
+    cap = cv2.VideoCapture(1)
+    captured_frame = None  # To store the captured frame
+    encoded_image = None  # To store the encoded image
+
+    while True:
+        _, frm = cap.read()
+        frm = cv2.flip(frm, 1)
+
+        # Process the frame for emotion detection
+        res = holis.process(cv2.cvtColor(frm, cv2.COLOR_BGR2RGB))
+
+        if res.face_landmarks:
+            lst = []
+            for i in res.face_landmarks.landmark:
+                lst.append(i.x - res.face_landmarks.landmark[1].x)
+                lst.append(i.y - res.face_landmarks.landmark[1].y)
+
+            if res.left_hand_landmarks:
+                for i in res.left_hand_landmarks.landmark:
+                    lst.append(i.x - res.left_hand_landmarks.landmark[8].x)
+                    lst.append(i.y - res.left_hand_landmarks.landmark[8].y)
+            else:
+                for i in range(42):
+                    lst.append(0.0)
+
+            if res.right_hand_landmarks:
+                for i in res.right_hand_landmarks.landmark:
+                    lst.append(i.x - res.right_hand_landmarks.landmark[8].x)
+                    lst.append(i.y - res.right_hand_landmarks.landmark[8].y)
+            else:
+                for i in range(42):
+                    lst.append(0.0)
+
+            lst = np.array(lst).reshape(1, -1)
+            pred = label[np.argmax(model.predict(lst))]
+            emotion = pred.lower()
+            print("Detected emotion:", emotion)
+
+            # Store the captured frame
+            captured_frame = frm.copy()  # Ensure a copy to avoid modification issues
+
+            # Convert the frame to base64 for displaying in HTML
+            _, buffer = cv2.imencode('.jpg', captured_frame)
+            encoded_image = base64.b64encode(buffer).decode('utf-8')
+            break  # exit loop after capturing one image
+
+    cap.release()
+    return emotion, encoded_image
+
+def get_books_from_db(emotion, exclude_books=None):
+    collection = db[emotion]
+    books = list(collection.find({}, {"_id": 0}))
+
+    if exclude_books:
+        filtered_books = [book for book in books if book['title'] not in exclude_books]
+    else:
+        filtered_books = books
+
+    # Select 2 random books from the list
+    if len(filtered_books) > 3:
+        return random.sample(filtered_books, 3)  # Get 2 random books
+    elif len(filtered_books) > 0:
+        return filtered_books  # If there are less than 2 books, return all of them
+    else:
+        return None  # Return None if no books are available
+
+@app.route('/')
+def index():
+    global previously_recommended_books
+    previously_recommended_books = []  # Reset previously recommended books on new session
+    if 'username' in session:
+        username = session['username']
+        return render_template('index.html', username=username)
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        user = users_collection.find_one({"username": username})
+
+        if user and bcrypt.checkpw(password.encode('utf-8'), user['password']):
+            session['username'] = username
+            return redirect(url_for('index'))
+        else:
+            flash("Invalid credentials, please try again.", "error")  # Flash an error message
+
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+        if users_collection.find_one({"username": username}):
+            flash("Username already exists, please choose a different one.", "error")  # Flash an error message
+            return render_template('register.html')  # Return to the same page
+
+        users_collection.insert_one({"username": username, "password": hashed_pw})
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('index'))
+
+@app.route('/capture_emotion', methods=['POST'])
+def capture_emotion():
+    global previously_recommended_books
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    username = session['username']
+    emotion, encoded_image = capture_emotion_once()  # Capture emotion once when requested
+
+    # Save user's mood into the database
+    user_moods_collection.insert_one({"username": username, "emotion": emotion})
+
+    # Get book recommendations from MongoDB based on detected emotion
+    recommended_books = get_books_from_db(emotion)
+
+    # Save previous recommendations
+    previous_recommendations_collection.insert_one({
+        "username": username,
+        "mood": emotion,
+        "books": recommended_books
+    })
+
+    previously_recommended_books.extend([book['title'] for book in recommended_books])
+
+    # Return emotion and recommended books as a JSON response, including the image
+    return jsonify({
+        "emotion": emotion.capitalize(),
+        "recommended_books": recommended_books,
+        "captured_image": encoded_image  # Pass the encoded image
+    })
+
+@app.route('/re_recommend', methods=['POST'])
+def re_recommend():
+    global previously_recommended_books
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    # Use the global variable 'emotion' that was set during emotion capture
+    recommended_books = get_books_from_db(emotion, exclude_books=previously_recommended_books)
+
+    if recommended_books is None:
+        return jsonify({"error": "Sorry, we are out of recommendations."})
+
+    # Save the new recommendations in the previous_recommendations collection
+    previous_recommendations_collection.insert_one({
+        "username": session['username'],
+        "mood": emotion,
+        "books": recommended_books
+    })
+
+    previously_recommended_books.extend([book['title'] for book in recommended_books])
+
+    # Return the new recommendations as a JSON response
+    return jsonify({"recommended_books": recommended_books})
+
+@app.route('/submit_rating', methods=['POST'])
+def submit_rating():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    data = request.get_json()
+    title = data['title']
+    rating = data['rating']
+    username = session['username']
+
+    # Debug: Print received data
+    print("Data received:", data)
+    print("Username:", username)
+    print("Title:", title)
+    print("Rating:", rating)
+
+    # Save the rating in the user_ratings collection
+    user_ratings_collection.insert_one({
+        "username": username,
+        "title": title,
+        "rating": rating
+    })
+
+    # Debug: Print insertion result
+    print("Rating saved in user_ratings collection")
+
+    # Fetch the document from previous_recommendations
+    doc = previous_recommendations_collection.find_one({"username": username, "books.title": title})
+
+    if doc:
+        # Update the rating for the specific book in previous_recommendations
+        for book in doc['books']:
+            if book['title'] == title:
+                book['rating'] = rating
+                break
+
+        # Save the updated document
+        previous_recommendations_collection.update_one({"_id": doc["_id"]}, {"$set": doc})
+
+        # Debug: Print update result
+        print("Rating updated in previous_recommendations collection")
+
+    return jsonify({"message": "Rating submitted successfully"})
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.route('/submit', methods=['GET', 'POST'])
+def contact():
+    if request.method == 'POST':
+        # Get data from form
+        name = request.form.get('name')
+        email = request.form.get('email')
+        subject = request.form.get('subject')
+        message = request.form.get('message')
+
+        # Debug: Print form data
+        print(f"Name: {name}, Email: {email}, Subject: {subject}, Message: {message}")
+
+        # Save the message to MongoDB
+        contact_db = client['contact_db']  # Access the correct database
+        messages_collection = contact_db['messages']  # Access the correct collection
+        result = messages_collection.insert_one({
+            'name': name,
+            'email': email,
+            'subject': subject,
+            'message': message
+        })
+
+        # Debug: Print insertion result
+        print("Inserted document ID:", result.inserted_id)
+        
+        return render_template('contact.html', name=name)
+
+    return render_template('contact.html')
+
+@app.route('/previous_moods')
+def previous_moods():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    username = session['username']
+
+    # Fetch all mood entries for the user
+    mood_entries = list(user_moods_collection.find({"username": username}))
+
+    # Calculate mood percentages
+    mood_counts = {}
+    for entry in mood_entries:
+        mood = entry['emotion']
+        mood_counts[mood] = mood_counts.get(mood, 0) + 1
+
+    total_moods = len(mood_entries)
+    mood_percentages = {mood: (count / total_moods) * 100 for mood, count in mood_counts.items()}
+
+    # Determine dominant mood
+    dominant_mood = max(mood_percentages, key=mood_percentages.get) if mood_percentages else None
+
+    # Fetch all recommended books for the user
+    all_books = []
+    recommendations = list(previous_recommendations_collection.find({"username": username}))
+    for rec in recommendations:
+        if rec["books"]:
+            all_books.extend(rec["books"])
+
+    return render_template(
+        'previous_moods.html',
+        mood_percentages=mood_percentages,
+        all_books=all_books,
+        username=username,  # Pass the username to the template
+        dominant_mood=dominant_mood
+    )
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+
+
+
+
+
+
+
+#insert_books.py
+
+from pymongo import MongoClient
+
+client = MongoClient("mongodb://localhost:27017/")
+db = client["book_recommendation"]
+
+books = {
+    "happy": [
+        {"title": "Waiting for Godalming", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0552147427.01.MZZZZZZZ.jpg"},
+        {"title": "The Forest House", "genre": "Fantasy Fiction", "image_url": "http://images.amazon.com/images/P/0451454243.01.MZZZZZZZ.jpg"},
+        {"title": "The Stars Shine Down", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0446364762.01.MZZZZZZZ.jpg"},
+        {"title": "The Secret Garden", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0812505018.01.MZZZZZZZ.jpg"},
+        {"title": "The Little Prince", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0156528207.01.MZZZZZZZ.jpg"},
+        {"title": "Harry Potter and the Sorcerer's Stone", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/059035342X.01.MZZZZZZZ.jpg"},
+        {"title": "The Hobbit", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0395177111.01.MZZZZZZZ.jpg"},
+        {"title": "The Bad Beginning (A Series of Unfortunate Events, Book 1)", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0064407667.01.MZZZZZZZ.jpg"},
+        {"title": "The Sorcerer's Companion: A Guide to the Magical World of Harry Potter", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0767908473.01.MZZZZZZZ.jpg"},
+        {"title": "Titan", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0425049981.01.MZZZZZZZ.jpg"},
+        {"title": "Sunwing", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0689832877.01.MZZZZZZZ.jpg"},
+        {"title": "Black Thorn, White Rose", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/068813713X.01.MZZZZZZZ.jpg"},
+        {"title": "Born of the Sun", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0453006663.01.MZZZZZZZ.jpg"},
+        {"title": "The White Puma", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/1558175326.01.MZZZZZZZ.jpg"},
+        {"title": "Enchantment", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0345416880.01.MZZZZZZZ.jpg"},
+        {"title": "The Hork-Bajir Chronicles (Animorphs Series)", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0439042917.01.MZZZZZZZ.jpg"},
+        {"title": "The Rescue", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0446525502.01.MZZZZZZZ.jpg"},
+        {"title": "A Map of the World", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0385500769.01.MZZZZZZZ.jpg"},
+        {"title": "Vinegar Hill", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0688180639.01.MZZZZZZZ.jpg"},
+        {"title": "Angel Falls", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0609605925.01.MZZZZZZZ.jpg"},
+        {"title": "The Saving Graces: A Novel", "genre": "Drama", "image_url": "http://images.amazon.com/images/P/0060191929.01.MZZZZZZZ.jpg"},
+        {"title": "The Vineyard: A Novel", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0684864843.01.MZZZZZZZ.jpg"},
+        {"title": "The Looking Glass: A Novel", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0684867818.01.MZZZZZZZ.jpg"},
+        {"title": "The Promise Remains", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0684868911.01.MZZZZZZZ.jpg"},
+        {"title": "The Villa", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/052594463X.01.MZZZZZZZ.jpg"},
+        {"title": "In This Mountain", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/039304016X.01.MZZZZZZZ.jpg"},
+        {"title": "Blue Heaven", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0140107649.01.MZZZZZZZ.jpg"},
+        {"title": "One Heart", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/1570717257.01.MZZZZZZZ.jpg"},
+        {"title": "Anne of Green Gables", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/055321313X.01.MZZZZZZZ.jpg"},
+        {"title": "Marriage by the Book", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/1551666987.01.MZZZZZZZ.jpg"},
+        {"title": "The Bride's Rescuer", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0373226918.01.MZZZZZZZ.jpg"},
+        {"title": "Twin Blessings", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0373871562.01.MZZZZZZZ.jpg"},
+        {"title": "Whisper to Me of Love", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0380752115.01.MZZZZZZZ.jpg"},
+        {"title": "Tender Triumph", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0671614568.01.MZZZZZZZ.jpg"},
+        {"title": "A Minor Indiscretion", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0373250339.01.MZZZZZZZ.jpg"},
+        {"title": "For Better, for Worse", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0380820447.01.MZZZZZZZ.jpg"},
+        {"title": "Geek Love", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0446391301.01.MZZZZZZZ.jpg"},
+        {"title": "Golden Cup", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0440130913.01.MZZZZZZZ.jpg"},
+        {"title": "One True Love? (Harlequin Flipside, No. 2)", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0373441762.01.MZZZZZZZ.jpg"},
+        {"title": "A Room with a View", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0679724761.01.MZZZZZZZ.jpg"},
+        {"title": "Fitcher's Brides", "genre": "Romance", "image_url": "http://images.amazon.com/images/P/0765301954.01.MZZZZZZZ.jpg"},
+        {"title": "The Notebook", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0802135064.01.MZZZZZZZ.jpg"},
+        {"title": "Citizens: A Chronicle of the French Revolution", "genre": "Historical Fiction", "image_url": "http://images.amazon.com/images/P/0679726101.01.MZZZZZZZ.jpg"},
+        {"title": "Stone Butch Blues", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/156341029X.01.MZZZZZZZ.jpg"},
+        {"title": "Stardust", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0060934719.01.MZZZZZZZ.jpg"},
+        {"title": "The Beans of Egypt, Maine", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0446300101.01.MZZZZZZZ.jpg"},
+        {"title": "Slow River", "genre": "Fiction", "image_url": "http://images.amazon.com/images/P/0345395379.01.MZZZZZZZ.jpg"},
+        {"title": "The Space Merchants", "genre": "Science Fiction", "image_url": "http://images.amazon.com/images/P/0312749511.01.MZZZZZZZ.jpg"},
+        {"title": "Dreamsnake", "genre": "Science Fiction", "image_url": "http://images.amazon.com/images/P/0395264707.01.MZZZZZZZ.jpg"},
+        {"title": "The Kite Runner", "genre": "Historical Fiction", "image_url": "http://images.amazon.com/images/P/1573222453.01.MZZZZZZZ.jpg"},
+        {"title": "Changer", "genre": "Fantasy", "image_url": "http://images.amazon.com/images/P/0805062971.01.MZZZZZZZ.jpg"},
+    ],
+    "sad": [
+        {"title": "Life’s Little Instruction Book", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0805062971.01.MZZZZZZZ.jpg"},
+        {"title": "Love, Medicine, and Miracles", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0060154969.01.MZZZZZZZ.jpg"},
+        {"title": "Getting Well Again", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0553259865.01.MZZZZZZZ.jpg"},
+        {"title": "The Therapeutic Touch", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/067176537X.01.MZZZZZZZ.jpg"},
+        {"title": "Rich Dad, Poor Dad: What the Rich Teach Their Kids About Money--That the Poor and Middle Class Do Not!", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0446677450.01.MZZZZZZZ.jpg"},
+        {"title": "Creating Wealth: Retire in Ten Years Using Allen's Seven Principles of Wealth!", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0671621009.01.MZZZZZZZ.jpg"},
+        {"title": "Keep It Simple: And Get More Out of Life", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0002740230.01.MZZZZZZZ.jpg"},
+        {"title": "If Singleness Is a Gift, What's the Return Policy?", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0785263292.01.MZZZZZZZ.jpg"},
+        {"title": "Always Daddy's Girl: Understanding Your Father's Impact on Who You Are", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0830714014.01.MZZZZZZZ.jpg"},
+        {"title": "The 7 Habits of Highly Effective People", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/1883219027.01.MZZZZZZZ.jpg"},
+        {"title": "Atomic Habits: An Easy & Proven Way to Build Good Habits & Break Bad Ones", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0735211299.01.MZZZZZZZ.jpg"},
+        {"title": "The Power of Now: A Guide to Spiritual Enlightenment", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/1577311523.01.MZZZZZZZ.jpg"},
+        {"title": "Self Analysis", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0884041093.01.MZZZZZZZ.jpg"},
+        {"title": "Come Before Winter and Share My Hope", "genre": "Self-Help", "image_url": "http://images.amazon.com/images/P/0842304770.01.MZZZZZZZ.jpg"},
+        {"title": "More George W. Bushisms", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0743251008.01.MZZZZZZZ.jpg"},
+        {"title": "The World's Stupidest Laws", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/185479549X.01.MZZZZZZZ.jpg"},
+        {"title": "The World's Stupidest Signs", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/1854795554.01.MZZZZZZZ.jpg"},
+        {"title": "SO LONG AND THANKS FOR ALL THE FISH", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0671745530.01.MZZZZZZZ.jpg"},
+        {"title": "The Amazing Adventures of Kavalier & Clay", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0312282990.01.MZZZZZZZ.jpg"},
+        {"title": "The Real Mother Goose", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0026890380.01.MZZZZZZZ.jpg"},
+        {"title": "One Fish Two Fish Red Fish Blue Fish", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0394800133.01.MZZZZZZZ.jpg"},
+        {"title": "The Chocolate Korndog", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/074141127X.01.MZZZZZZZ.jpg"},
+        {"title": "Eeyore's Little Book of Gloom", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0416196772.01.MZZZZZZZ.jpg"},
+        {"title": "Crazy from the Heat", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/0786889470.01.MZZZZZZZ.jpg"},
+        {"title": "Expecting Someone Taller", "genre": "Comedy", "image_url": "http://images.amazon.com/images/P/044122332X.01.MZZZZZZZ.jpg"},
+        {"title": "Moby-Dick", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0140390847.01.MZZZZZZZ.jpg"},
+        {"title": "Life of Pi", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0151008116.01.MZZZZZZZ.jpg"},
+        {"title": "Neverwhere", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0380973634.01.MZZZZZZZ.jpg"},
+        {"title": "The Call of the Wild", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0451527038.01.MZZZZZZZ.jpg"},
+        {"title": "The Phantom Tollbooth", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0394815009.01.MZZZZZZZ.jpg"},
+        {"title": "Tracks", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/0060972459.01.MZZZZZZZ.jpg"},
+        {"title": "Daughter of Fortune", "genre": "Adventure", "image_url": "http://images.amazon.com/images/P/038082101X.01.MZZZZZZZ.jpg"},
+        {"title": "Becoming a Man", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0062507249.01.MZZZZZZZ.jpg"},
+        {"title": "Anne Frank: The Diary of a Young Girl", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0553296981.01.MZZZZZZZ.jpg"},
+        {"title": "Long Walk to Freedom", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0316548189.01.MZZZZZZZ.jpg"},
+        {"title": "Gandhi An Autobiography: The Story of My Experiments With Truth", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0807059099.01.MZZZZZZZ.jpg"},
+        {"title": "Benjamin Franklin: An American Life", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/074353364X.01.MZZZZZZZ.jpg"},
+        {"title": "Born to Run", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/044010694X.01.MZZZZZZZ.jpg"},
+        {"title": "Wilbur and Orville: A Biography of the Wright Brothers", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/039454269X.01.MZZZZZZZ.jpg"},
+        {"title": "Madame Curie: A Biography", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0306810387.01.MZZZZZZZ.jpg"},
+        {"title": "The Years of Lyndon Johnson", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/067973371X.01.MZZZZZZZ.jpg"},
+        {"title": "Elvis Presley", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0670031747.01.MZZZZZZZ.jpg"},
+        {"title": "The Man Who Knew Infinity", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0671750615.01.MZZZZZZZ.jpg"},
+        {"title": "Alan Turing: The Enigma", "genre": "Biography", "image_url": "http://images.amazon.com/images/P/0802775802.01.MZZZZZZZ.jpg"},
+    ],
+    "angry": [
+        {"title": "How Not to Say What You Mean: A Dictionary of Euphemisms", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0198604025.01.MZZZZZZZ.jpg"},
+        {"title": "College Majors and Careers: A Resource Guide for Effective Life Planning", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0894342789.01.MZZZZZZZ.jpg"},
+        {"title": "How to Win Friends and Influence People", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0671027034.01.MZZZZZZZ.jpg"},
+        {"title": "The Grace and Truth Paradox: Responding with Christlike Balance", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/1590520653.01.MZZZZZZZ.jpg"},
+        {"title": "Just Here Trying to Save a Few Lives", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0446677574.01.MZZZZZZZ.jpg"},
+        {"title": "So That Others May Live: Caroline Hebard & Her Search-And-Rescue Dogs", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0553574833.01.MZZZZZZZ.jpg"},
+        {"title": "I Thought My Father Was God: And Other True Tales from NPR's National Story Project", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0312421001.01.MZZZZZZZ.jpg"},
+        {"title": "The Best Thing I Ever Did for My Marriage: 50 Real Life Stories", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/1590521994.01.MZZZZZZZ.jpg"},
+        {"title": "Eat Smart, Think Smart", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0060170441.01.MZZZZZZZ.jpg"},
+        {"title": "Negaholics", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0712646221.01.MZZZZZZZ.jpg"},
+        {"title": "Third Eye", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0440987202.01.MZZZZZZZ.jpg"},
+        {"title": "Sympathy for the Devil", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0380795965.01.MZZZZZZZ.jpg"},
+        {"title": "Reviving Ophelia", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0345392825.01.MZZZZZZZ.jpg"},
+        {"title": "Seven Habits of Highly Effective People", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0671708635.01.MZZZZZZZ.jpg"},
+        {"title": "Chicken Soup for the College Soul", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/1558747028.01.MZZZZZZZ.jpg"},
+        {"title": "You're Fifty--Now What", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0609605623.01.MZZZZZZZ.jpg"},
+        {"title": "Emotional Purity", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/1579213405.01.MZZZZZZZ.jpg"},
+        {"title": "Feeling Good", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0688036333.01.MZZZZZZZ.jpg"},
+        {"title": "The Big Book of Calm", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0140282378.01.MZZZZZZZ.jpg"},
+        {"title": "What Women Want", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/037303752X.01.MZZZZZZZ.jpg"},
+        {"title": "The Self-Esteem Companion", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/1572241381.01.MZZZZZZZ.jpg"},
+        {"title": "Becoming a Critical Thinker", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/0130289221.01.MZZZZZZZ.jpg"},
+        {"title": "How to Say It Style Guide", "genre": "Motivational", "image_url": "http://images.amazon.com/images/P/073520313X.01.MZZZZZZZ.jpg"},
+        {"title": "Sophie's World: A Novel About the History of Philosophy", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/3423620005.01.MZZZZZZZ.jpg"},
+        {"title": "Common Phrases: And Where They Come From", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/1585746827.01.MZZZZZZZ.jpg"},
+        {"title": "The Brothers Karamazov", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0865474222.01.MZZZZZZZ.jpg"},
+        {"title": "Fahrenheit 451", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0881030198.01.MZZZZZZZ.jpg"},
+        {"title": "The Little Prince", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0156528207.01.MZZZZZZZ.jpg"},
+        {"title": "Atlas Shrugged", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0451191145.01.MZZZZZZZ.jpg"},
+        {"title": "The Myth of Sisyphus and Other Essays (Vintage International)", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0679733736.01.MZZZZZZZ.jpg"},
+        {"title": "The Selfish Gene", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0192860925.01.MZZZZZZZ.jpg"},
+        {"title": "Siddhartha: An Indian Tale (Penguin Classics)", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0142437182.01.MZZZZZZZ.jpg"},
+        {"title": "1984", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0704339838.01.MZZZZZZZ.jpg"},
+        {"title": "The Picture of Dorian Gray", "genre": "Philosophical", "image_url": "http://images.amazon.com/images/P/0893759953.01.MZZZZZZZ.jpg"},
+        {"title": "Anam Cara", "genre": "Spiritual", "image_url": "http://images.amazon.com/images/P/0060182792.01.MZZZZZZZ.jpg"},
+    ],
+}
+
+# Insert books into the database
+for emotion, book_list in books.items():
+    collection = db[emotion]
+    collection.insert_many(book_list)
+
+print("Books for each emotion have been inserted successfully!")
+
+
+
+
+
+
+
+
+
+#index.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion and Book Recommendation</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='index.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Inspired to Learn</div>
+            <ul>
+                <li><a href="#" class="active">Home</a></li>
+                <li><a href="{{ url_for('about') }}">About</a></li>
+                <li><a href="{{ url_for('contact') }}">Contact</a></li>
+                {% if username %}
+                <li><a href="{{ url_for('previous_moods') }}"> Previous Moods</a> </li>
+                {% endif %}
+                {% if username %}
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+
+    {% if username %}
+        <h1>Hello {{ username }}</h1>
+    {% else %}
+        <a href="{{ url_for('login') }}">Login</a> | <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <h1>Emotion Detection & Book Recommendations</h1>
+    <button id="capture-button" onclick="startEmotionCapture()">Capture Emotion</button>
+
+    <div id="emotion-output">Your emotion will appear here...</div>
+
+    <div id="books-output">
+        <h3>Recommended Books:</h3>
+        <div class="book-list" id="book-list"></div>
+    </div>
+
+    <div id="capturedImageContainer">
+        <h3>Captured Frame:</h3>
+        <img id="capturedImage" src="" alt="Captured Emotion" style="display:none;">
+    </div>
+
+    <button id="re-recommend-button" style="display:none;" onclick="reRecommendBooks()">Re-Recommend Books</button>
+
+    <script>
+        function startEmotionCapture() {
+            fetch('/capture_emotion', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Received emotion data:', data); // Debugging: Log the response
+                    document.getElementById('emotion-output').innerText = "Your emotion is: " + data.emotion;
+
+                    const bookList = document.getElementById('book-list');
+                    bookList.innerHTML = '';
+
+                    // Show Captured Frame
+                    const capturedImageContainer = document.getElementById("capturedImageContainer");
+                    const capturedImage = document.getElementById("capturedImage");
+
+                    if (data.captured_image) {
+                        capturedImage.src = "data:image/jpeg;base64," + data.captured_image;
+                        capturedImage.style.display = "block";
+                        capturedImageContainer.style.display = "block";
+                    }
+
+                    if (data.recommended_books && data.recommended_books.length > 0) {
+                        // Display recommended books
+                        data.recommended_books.forEach((book, index) => {
+                            const bookItem = document.createElement('div');
+                            bookItem.className = 'book-item';
+                            bookItem.innerHTML = `
+                                <img src="${book.image_url}" alt="${book.title}">
+                                <div class="book-title">${book.title}</div>
+                                <p>Genre: ${book.genre}</p>
+                                <div class="rating">
+                                    <button id="rating-${index}-1" onclick="rateBook(${index}, 1)">1</button>
+                                    <button id="rating-${index}-2" onclick="rateBook(${index}, 2)">2</button>
+                                    <button id="rating-${index}-3" onclick="rateBook(${index}, 3)">3</button>
+                                    <button id="rating-${index}-4" onclick="rateBook(${index}, 4)">4</button>
+                                    <button id="rating-${index}-5" onclick="rateBook(${index}, 5)">5</button>
+                                    <button id="submit-rating-${index}" onclick="submitRating(${index}, '${book.title}')">Submit</button>
+                                    <div id="rating-message-${index}" class="rating-message"></div>
+                                </div>
+                            `;
+                            bookList.appendChild(bookItem);
+                        });
+
+                        // Show "Re-Recommend Books" button
+                        document.getElementById('re-recommend-button').style.display = 'inline-block';
+                    } else {
+                        bookList.innerHTML = '<p>No book recommendations available for this emotion.</p>';
+                        document.getElementById('re-recommend-button').style.display = 'none';
+                    }
+                })
+                .catch(error => console.error("Error fetching emotion:", error));
+        }
+
+        function rateBook(index, rating) {
+            const buttons = document.querySelectorAll(`#rating-${index}-1, #rating-${index}-2, #rating-${index}-3, #rating-${index}-4, #rating-${index}-5`);
+            buttons.forEach(button => button.classList.remove('selected'));
+            document.getElementById(`rating-${index}-${rating}`).classList.add('selected');
+        }
+
+        function submitRating(index, title) {
+            let selectedRating = null;
+            for (let i = 1; i <= 5; i++) {
+                if (document.getElementById(`rating-${index}-${i}`).classList.contains('selected')) {
+                    selectedRating = i;
+                    break;
+                }
+            }
+
+            if (selectedRating) {
+                fetch('/submit_rating', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: title, rating: selectedRating })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Clear any previous "Thank you" message
+                        const ratingMessage = document.getElementById(`rating-message-${index}`);
+                        ratingMessage.innerHTML = '';
+
+                        // Display the new "Thank you" message with the updated rating
+                        const message = document.createElement('p');
+                        message.innerText = `Thank you for your rating of ${selectedRating}!`;
+                        message.style.color = "white";
+                        ratingMessage.appendChild(message);
+                    })
+                    .catch(error => console.error("Error submitting rating:", error));
+            }
+        }
+
+        function reRecommendBooks() {
+            fetch('/re_recommend', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    const bookList = document.getElementById('book-list');
+                    bookList.innerHTML = ''; // Clear previous books
+                    if (data.recommended_books && data.recommended_books.length > 0) {
+                        data.recommended_books.forEach((book, index) => {
+                            const bookItem = document.createElement('div');
+                            bookItem.className = 'book-item';
+                            bookItem.innerHTML = `
+                                <img src="${book.image_url}" alt="${book.title}">
+                                <strong>${book.title}</strong>
+                                <p>Genre: ${book.genre}</p>
+                                <div class="rating">
+                                    <button id="rating-${index}-1" onclick="rateBook(${index}, 1)">1</button>
+                                    <button id="rating-${index}-2" onclick="rateBook(${index}, 2)">2</button>
+                                    <button id="rating-${index}-3" onclick="rateBook(${index}, 3)">3</button>
+                                    <button id="rating-${index}-4" onclick="rateBook(${index}, 4)">4</button>
+                                    <button id="rating-${index}-5" onclick="rateBook(${index}, 5)">5</button>
+                                    <button id="submit-rating-${index}" onclick="submitRating(${index}, '${book.title}')">Submit</button>
+                                    <div id="rating-message-${index}" class="rating-message"></div>
+                                </div>
+                            `;
+                            bookList.appendChild(bookItem);
+                        });
+                    } else {
+                        bookList.innerHTML = '<p>No new recommendations available for this emotion.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching re-recommendation:", error);
+                });
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const ratingButtons = document.querySelectorAll(".rating button");
+
+            ratingButtons.forEach((button) => {
+                button.addEventListener("click", function () {
+                    // Remove 'selected' class from all buttons in the same rating group
+                    let parent = this.parentElement;
+                    parent.querySelectorAll("button").forEach((btn) => btn.classList.remove("selected"));
+
+                    // Add 'selected' class to the clicked button
+                    this.classList.add("selected");
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+#login.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='login.css') }}">
+</head>
+<body>
+
+    <div class="main">
+        <div class="navbar">
+            <div class="icon">
+                <h2 class="logo">Inspired to Learn</h2>
+            </div>
+        </div> 
+        <div class="content">
+            <h1> <h1>Mood-Based<span> Books</span><br> Recommendation System</h1></h1>
+            <p class="par">A mood-based recommendation system analyzes user emotions to suggest books<br>
+                 that match their feelings. Using emotion detection and a curated dataset, it personalizes <br>
+                 recommendations, enhancing the reading experience by aligning book choices with the user's<br> current mood.</p>
+
+              
+
+                <div class="form">
+                    <h2>Login Here</h2>
+                    {% with messages = get_flashed_messages(with_categories=true) %} 
+                    {% if messages %} 
+                        <div class="error"> 
+                            {% for category, message in messages %} 
+                                <p>{{ message }}</p> 
+                            {% endfor %} 
+                        </div> 
+                    {% endif %} 
+                {% endwith %} 
+
+                <form method="POST"> 
+                    <input type="text" name="username" placeholder="Username" required><br> 
+                    <input type="password" name="password" placeholder="Password" required><br> 
+                    <br><button type="submit" class="cn">Login</button> 
+                </form> 
+             
+
+                    <p class="link">Don't have an account ?<a href="{{ url_for('register') }}"><br><br>Sign Up</br></br>
+                   
+                
+
+                </div>
+                    </div>
+                </div>
+        </div>
+    </div>
+    
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+#register.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='register.css') }}">
+</head>
+<body>
+    <div class="navbar">
+        <div class="icon">
+            <h2 class="logo">Inspired to Learn</h2>
+        </div>
+    </div> 
+    <div class="register-container">
+        <div class="header-box">
+            <h1>Register</h1>
+            {% with messages = get_flashed_messages(with_categories=true) %} 
+        {% if messages %} 
+            <div class="error"> 
+                {% for category, message in messages %} 
+                    <p>{{ message }}</p> 
+                {% endfor %} 
+            </div> 
+        {% endif %} 
+    {% endwith %} 
+        </div>
+        <form method="POST">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required>
+            
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            
+            <button type="submit">Register</button>
+        </form>
+        <p class="login-text">Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+#previous_moods.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previous Moods and Recommendations</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='previous.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js -->
+</head>
+<body>
+    <header>
+        <div class="navbar">
+            <h2 class="logo">Inspired to Learn</h2>
+        </div>
+        <nav>
+          <!-- Back to Home Button -->
+        <a href="{{ url_for('index') }}" class="back-button">⬅ Back to Home</a>  </nav>
+        
+    </header>
+
+    <h1><br><br>Previous Moods and Ratings</h1>
+
+    <!-- Mood Percentages Section (Now Below Book List) -->
+    <div class="mood-percentages">
+        <h2>Mood Percentages:</h2>
+        
+        <!-- Pie Chart -->
+        <canvas id="moodChart"></canvas>
+
+        {% if mood_percentages %}
+            <p>{{ username }} is mostly {{ dominant_mood }}.</p>
+        {% endif %}
+    </div>
+
+    <!-- Book List Section -->
+    <div class="book-list">
+        <h2>All Recommended Books:</h2>
+        <ul>
+            {% for book in all_books %}
+                <li class="book-item">{{ book.title }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    
+
+    <!-- JavaScript for Pie Chart -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var ctx = document.getElementById('moodChart').getContext('2d');
+
+            // Filtered Mood Data (Only Happy, Sad, and Angry)
+            var moodData = {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [], // Define colors dynamically
+                    borderWidth: 1
+                }]
+            };
+
+            var moodPercentages = {{ mood_percentages | tojson }};  // Get Python dictionary as JSON
+
+            // Only include Happy, Sad, and Angry moods with specific colors
+            var selectedMoods = ['happy', 'sad', 'angry'];
+            var colorMap = {'happy': '#FFD700', 'sad': '#3498DB', 'angry': '#FF0000'}; // Yellow, Blue, Red
+
+            for (var mood in moodPercentages) {
+                if (selectedMoods.includes(mood)) {
+                    moodData.labels.push(mood.charAt(0).toUpperCase() + mood.slice(1)); // Capitalize first letter
+                    moodData.datasets[0].data.push(moodPercentages[mood]);
+                    moodData.datasets[0].backgroundColor.push(colorMap[mood]);
+                }
+            }
+
+            new Chart(ctx, {
+                type: 'pie',
+                data: moodData,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+#contact.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Us</title>
+    <script>
+        // Check if the name variable exists and show an alert
+        window.onload = function() {
+            {% if name %}
+                alert("Thank you {{ name }} for submitting!");
+            {% endif %}
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+
+        body {
+            background: #f8f9fa;
+            color: #333;
+        }
+
+        .header {
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-links a {
+            margin-left: 2rem;
+            text-decoration: none;
+            color: #666;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: red;
+        }
+
+        .alert-banner {
+            background: #fff4e5;
+            padding: 1.5rem;
+            text-align: center;
+            margin: 2rem auto;
+            max-width: 1200px;
+            border-radius: 8px;
+        }
+
+        .alert-banner a {
+            color: red;
+            text-decoration: none;
+            margin-left: 1rem;
+        }
+
+        .contact-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 3rem;
+        }
+
+        .help-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .help-section h2 {
+            margin-bottom: 1.5rem;
+            color: #444;
+        }
+
+        .contact-methods {
+            margin: 2rem 0;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .contact-item i {
+            font-size: 1.2rem;
+            color: red;
+            margin-right: 1rem;
+        }
+
+        .faq-promo {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+
+        .contact-form {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .form-note {
+            color: #666;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background: red;
+            color: white;
+            padding: 0.8rem 2rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: darkred;
+        }
+
+        #faqs {
+            display: none;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-top: 2rem;
+        }
+        #faqs li{
+         list-style-type: none;
+         padding: 0;
+        }
+
+        #faqs li {
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .contact-container {
+                grid-template-columns: 1fr;
+                padding: 0 1rem;
+            }
+            
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .nav-links {
+                margin-top: 1rem;
+            }
+        }
+        
+        .back-button {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    background-color: red;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+}
+
+.back-button:hover {
+    background-color: darkred;
+}
+
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Inspired to Learn</h1>
+        <nav class="nav-links">
+            <a href="{{ url_for('index') }}" class="back-button">⬅ Back to Home</a>  </nav>
+        </nav>
+    </header>
+
+    <div class="contact-container">
+        <div class="help-section">
+            <h2>We're happy to help!</h2>
+            <div class="faq-promo">
+                <h3>Have a quick question?</h3>
+                <p>Check our FAQs for a quick answer</p>
+                <button id="view-faqs" style="margin-top: 1rem;">View FAQs</button>
+            </div>
+            <div class="contact-methods">
+                <div class="contact-item">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <div>
+                        <h4>College</h4>
+                        <p>Chakupat,Lalitpur,Nepal</p>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <i class="fas fa-envelope"></i>
+                    <div>
+                        <h4>Email us</h4>
+                        <p>inspiredtolearn@gmail.com</p>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <i class="fas fa-phone"></i>
+                    <div>
+                        <h4>Phone</h4>
+                        <p>01-6638115</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="contact-form">
+            <h2>Send us a message</h2>
+            <p class="form-note">Questions, concerns...? We want to help. Send us a message below</p>
+            
+            <form action="/submit" method="POST">
+                <div class="form-group">
+                    <label>Your Name</label>
+                    <input type="text" name="name" placeholder="Enter your name" required>
+                </div>
+            
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                </div>
+            
+                <div class="form-group">
+                    <label>Subject</label>
+                    <input type="text" name="subject" placeholder="Enter subject">
+                </div>
+            
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea name="message" rows="5" placeholder="Enter your message" required></textarea>
+                </div>
+            
+                <p class="form-note">Have a quick question? Check our FAQs for a quick answer</p>
+                <button type="submit">Send Message</button>
+            </form>
+            
+        </div>
+    </div>
+
+    <!-- FAQs Section -->
+    <div id="faqs">
+        <h2>Frequently Asked Questions (FAQs)</h2>
+        <ul>
+            <li>
+                <strong>1. How does this recommendation system work?</strong>
+                <p>Our system suggests books based on your current mood. Simply select how you're feeling, and we'll provide personalized book recommendations to match your emotions.</p>
+            </li>
+            <li>
+                <strong>2. How are books recommended based on mood?</strong>
+                <p>We analyze different moods and map them to books that evoke similar emotions, helping you find a perfect read for your current feelings.</p>
+            </li>
+            <li>
+                <strong>3. Can I see my previous mood-based recommendations?</strong>
+                <p>Yes! You can check your past moods and the books recommended to you on the "Previous Moods" page.</p>
+            </li>
+            <li>
+                <strong>4. Do I need to create an account to get recommendations?</strong>
+                <p>No, you can explore recommendations without an account. However, creating an account allows you to save past moods and get more personalized suggestions.</p>
+            </li>
+            <li>
+                <strong>5. Can I request a specific book to be added?</strong>
+                <p>Yes! If you have a book suggestion, feel free to reach out via our Contact Us section.</p>
+            </li>
+            <li>
+                <strong>6. How often is the book database updated?</strong>
+                <p>We regularly update our book collection to include trending and highly-rated books in various genres.</p>
+            </li>
+            <li>
+                <strong>7. Is this recommendation system powered by AI?</strong>
+                <p>Yes, our system uses AI and mood analysis techniques to match books to your emotions for the best reading experience.</p>
+            </li>
+            <li>
+                <strong>8. What if I don't like the recommended books?</strong>
+                <p>If the suggestions don’t match your interest, try selecting a different mood or exploring our broader collection of books.</p>
+            </li>
+        </ul>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('view-faqs').addEventListener('click', function() {
+                const faqs = document.getElementById('faqs');
+                faqs.style.display = (faqs.style.display === 'none' || faqs.style.display === '') ? 'block' : 'none';
+            });
+        });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+#about.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - Mood-Based Book Recommendation</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='about.css') }}">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">Inspired to Learn</div>
+            <a href="{{ url_for('index') }}" class="back-button">⬅ Back to Home</a>  </nav>
+        </nav>
+    </header>
+    
+    <div class="about-container">
+        <h1>About Us</h1>
+        <p>Welcome to <strong>Mood-Based Book Recommendation System</strong>, an AI-powered platform designed to enhance your reading experience by recommending books that align with your emotions.</p>
+        <p>In today's fast-paced world, finding the right book that suits your mood can be challenging. Whether you're feeling happy, sad, or in need of motivation, our system leverages <strong>emotion detection technology</strong> and <strong>machine learning</strong> to suggest books that resonate with your current emotional state.</p>
+        
+        <h2>Who We Are</h2>
+        <p>We are a team of <strong>Computer Engineering Students</strong> from <strong>Lalitpur Engineering College, Nepal</strong>, passionate about <strong>Artificial Intelligence, Machine Learning, and Human-Computer Interaction</strong>. Our project is developed as part of our <strong>Bachelor of Engineering</strong> curriculum, aiming to make book discovery more <strong>personalized and intuitive</strong>.</p>
+        
+        <h2>What We Do</h2>
+        <ul>
+            <li><strong>AI-Powered Emotion Detection:</strong> Our system captures and analyzes facial expressions using <strong>MediaPipe</strong> and a <strong>Neural Network Model (MLP)</strong> to determine your mood.</li>
+            <li><strong>Smart Book Recommendations:</strong> Based on your detected mood, we suggest books from a well-curated database stored in <strong>MongoDB</strong>.</li>
+            <li><strong>User Engagement:</strong> You can rate recommendations, request new suggestions, and track your previous moods for a seamless reading journey.</li>
+        </ul>
+        
+        <h2>Our Vision</h2>
+        <p>We believe that books have the power to <strong>inspire, heal, and transform lives</strong>. Our goal is to use <strong>cutting-edge technology</strong> to create a platform that understands <strong>human emotions</strong> and helps people find the perfect book at the right moment.</p>
+        
+        <p class="quote">📚 <strong>Read what you feel. Feel what you read.</strong></p>
+    </div>
+</body>
+</html>
